@@ -94,6 +94,7 @@
     <header class="hud">
       <div>Score: <strong id="score">0</strong></div>
       <div>Best: <strong id="best">0</strong></div>
+      <div>Time: <strong id="timer">0.0s</strong></div>
       <button id="restart" type="button">Restart</button>
     </header>
     <canvas id="game" width="720" height="420" aria-label="Spinning square game"></canvas>
@@ -108,6 +109,7 @@
     const scoreEl = document.getElementById('score');
     const bestEl = document.getElementById('best');
     const restartButton = document.getElementById('restart');
+    const timerEl = document.getElementById('timer');
 
     const STORAGE_KEY = 'spinning-square-best-score';
     const keys = new Set();
@@ -120,7 +122,8 @@
       gameOver: false,
       spawnTimer: 0,
       speedRamp: 1,
-      lastTs: 0
+      lastTs: 0,
+      elapsed: 0
     };
 
     bestEl.textContent = state.best;
@@ -139,7 +142,9 @@
       state.gameOver = false;
       state.spawnTimer = 0;
       state.speedRamp = 1;
+      state.elapsed = 0;
       scoreEl.textContent = '0';
+      timerEl.textContent = '0.0s';
     }
 
     function spawnEnemy() {
@@ -173,6 +178,8 @@
       }
 
       state.speedRamp += 0.05 * dt;
+      state.elapsed += dt;
+      timerEl.textContent = `${state.elapsed.toFixed(1)}s`;
 
       for (let i = state.enemies.length - 1; i >= 0; i -= 1) {
         const enemy = state.enemies[i];
