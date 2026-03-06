@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Spinning Square Game</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0f172a;
+      --card: #1e293b;
+      --accent: #22d3ee;
+      --danger: #f43f5e;
+      --good: #34d399;
+      --text: #e2e8f0;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: radial-gradient(circle at top, #1e293b 0%, var(--bg) 60%);
+      color: var(--text);
+      display: grid;
+      place-items: center;
+      padding: 1rem;
+    }
+
+    .game-shell {
+      width: min(92vw, 720px);
+      background: color-mix(in oklab, var(--card), black 12%);
+      border: 1px solid #334155;
+      border-radius: 1rem;
+      box-shadow: 0 20px 30px rgba(0, 0, 0, 0.35);
+      overflow: hidden;
+    }
+
+    .hud {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.8rem 1rem;
+      border-bottom: 1px solid #334155;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+    }
+
+    .hud strong { color: var(--accent); }
+
+    button {
+      border: none;
+      background: var(--accent);
+      color: #042f2e;
+      font-weight: 700;
+      border-radius: 999px;
+      padding: 0.4rem 0.9rem;
+      cursor: pointer;
+    }
+
+    button:hover { filter: brightness(1.08); }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: auto;
+      background:
+        linear-gradient(180deg, rgba(15, 23, 42, 0.55), rgba(2, 6, 23, 0.9)),
+        radial-gradient(circle at 70% 20%, rgba(34, 211, 238, 0.18), transparent 45%),
+        radial-gradient(circle at 20% 80%, rgba(52, 211, 153, 0.18), transparent 45%),
+        #020617;
+    }
+
+    .help {
+      margin: 0;
+      padding: 0.8rem 1rem 1rem;
+      color: #94a3b8;
+      font-size: 0.94rem;
+    }
+
+    .help kbd {
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-bottom-width: 2px;
+      border-radius: 0.35rem;
+      padding: 0 0.35rem;
+      color: #cbd5e1;
+    }
+  </style>
+</head>
+<body>
+  <section class="game-shell">
+    <header class="hud">
+      <div>Score: <strong id="score">0</strong></div>
+      <div>Best: <strong id="best">0</strong></div>
+      <button id="restart" type="button">Restart</button>
+    </header>
+    <canvas id="game" width="720" height="420" aria-label="Spinning square game"></canvas>
+    <p class="help">
+      Move with <kbd>←</kbd>/<kbd>→</kbd> or <kbd>A</kbd>/<kbd>D</kbd>. Avoid red falling blocks while your square spins faster over time.
+    </p>
+  </section>
+
+  <script>
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+    const scoreEl = document.getElementById('score');
+    const bestEl = document.getElementById('best');
+    const restartButton = document.getElementById('restart');
+
+    const STORAGE_KEY = 'spinning-square-best-score';
+    const keys = new Set();
+
+    const state = {
+      player: null,
+      enemies: [],
+      score: 0,
+      best: Number(localStorage.getItem(STORAGE_KEY) || 0),
+      gameOver: false,
+      spawnTimer: 0,
+      speedRamp: 1,
+      lastTs: 0
+    };
+
+    bestEl.textContent = state.best;
+
+    function resetGame() {
+      state.player = {
+        x: canvas.width / 2,
+        y: canvas.height - 54,
+        size: 34,
+        angle: 0,
+        spinSpeed: 2.7,
+        moveSpeed: 320
+      };
+      state.enemies = [];
+      state.score = 0;
+      state.gameOver = false;
+      state.spawnTimer = 0;
+      state.speedRamp = 1;
+      scoreEl.textContent = '0';
+    }
+
+    function spawnEnemy() {
+      const size = 24 + Math.random() * 26;
+      state.enemies.push({
+        x: 20 + Math.random() * (canvas.width - 40),
+        y: -size,
+        size,
+        speed: (125 + Math.random() * 130) * state.speedRamp
+      });
+    }
+
+    function update(dt) {
+      if (state.gameOver) return;
+
+      const left = keys.has('ArrowLeft') || keys.has('a') || keys.has('A');
+      const right = keys.has('ArrowRight') || keys.has('d') || keys.has('D');
+
+      if (left) state.player.x -= state.player.moveSpeed * dt;
+      if (right) state.player.x += state.player.moveSpeed * dt;
+
+      const half = state.player.size / 2;
+      state.player.x = Math.max(half, Math.min(canvas.width - half, state.player.x));
+      state.player.angle += state.player.spinSpeed * dt;
+      state.player.spinSpeed += 0.04 * dt;
+
+      state.spawnTimer -= dt;
+      if (state.spawnTimer <= 0) {
+        spawnEnemy();
+        state.spawnTimer = Math.max(0.35, 1.05 - state.score * 0.02);
+      }
+
+      state.speedRamp += 0.05 * dt;
+
+      for (let i = state.enemies.length - 1; i >= 0; i -= 1) {
+        const enemy = state.enemies[i];
+        enemy.y += enemy.speed * dt;
+
+        if (enemy.y - enemy.size > canvas.height) {
+          state.enemies.splice(i, 1);
+          state.score += 1;
+          scoreEl.textContent = String(state.score);
+          continue;
+        }
+
+        if (isColliding(state.player, enemy)) {
+          state.gameOver = true;
+          if (state.score > state.best) {
+            state.best = state.score;
+            localStorage.setItem(STORAGE_KEY, String(state.best));
+            bestEl.textContent = String(state.best);
+          }
+        }
+      }
+    }
+
+    function isColliding(player, enemy) {
+      const playerHalf = player.size * 0.7;
+      const enemyHalf = enemy.size / 2;
+
+      return (
+        Math.abs(player.x - enemy.x) < playerHalf + enemyHalf &&
+        Math.abs(player.y - enemy.y) < playerHalf + enemyHalf
+      );
+    }
+
+    function drawGrid() {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(148, 163, 184, 0.12)';
+      ctx.lineWidth = 1;
+      for (let x = 0; x <= canvas.width; x += 40) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, canvas.height);
+        ctx.stroke();
+      }
+      for (let y = 0; y <= canvas.height; y += 40) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(canvas.width, y);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      drawGrid();
+
+      for (const enemy of state.enemies) {
+        ctx.save();
+        ctx.translate(enemy.x, enemy.y);
+        ctx.fillStyle = 'rgba(244, 63, 94, 0.85)';
+        ctx.fillRect(-enemy.size / 2, -enemy.size / 2, enemy.size, enemy.size);
+        ctx.restore();
+      }
+
+      ctx.save();
+      ctx.translate(state.player.x, state.player.y);
+      ctx.rotate(state.player.angle);
+      ctx.fillStyle = '#22d3ee';
+      ctx.fillRect(-state.player.size / 2, -state.player.size / 2, state.player.size, state.player.size);
+      ctx.strokeStyle = '#67e8f9';
+      ctx.lineWidth = 3;
+      ctx.strokeRect(-state.player.size / 2, -state.player.size / 2, state.player.size, state.player.size);
+      ctx.restore();
+
+      if (state.gameOver) {
+        ctx.save();
+        ctx.fillStyle = 'rgba(2, 6, 23, 0.68)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = '#f8fafc';
+        ctx.textAlign = 'center';
+        ctx.font = '700 44px Inter, system-ui, sans-serif';
+        ctx.fillText('Game Over', canvas.width / 2, canvas.height / 2 - 12);
+        ctx.fillStyle = '#94a3b8';
+        ctx.font = '500 20px Inter, system-ui, sans-serif';
+        ctx.fillText('Press Restart to play again', canvas.width / 2, canvas.height / 2 + 30);
+        ctx.restore();
+      }
+    }
+
+    function loop(ts) {
+      const dt = Math.min(0.033, (ts - state.lastTs) / 1000 || 0);
+      state.lastTs = ts;
+      update(dt);
+      draw();
+      requestAnimationFrame(loop);
+    }
+
+    window.addEventListener('keydown', (event) => {
+      keys.add(event.key);
+      if (["ArrowLeft", "ArrowRight", "a", "A", "d", "D"].includes(event.key)) {
+        event.preventDefault();
+      }
+    });
+
+    window.addEventListener('keyup', (event) => {
+      keys.delete(event.key);
+    });
+
+    restartButton.addEventListener('click', resetGame);
+
+    resetGame();
+    requestAnimationFrame(loop);
+  </script>
+</body>
+</html>
